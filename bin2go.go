@@ -7,12 +7,15 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
+	"strings"
+	"unicode"
 )
 
 var (
-	in  = flag.String("in", "", "use this file instead of the stdin for input")
-	out = flag.String("out", "", "use this file instead of the stdout for output")
-	pkg = flag.String("pkg", "", "prepend package clause specifying this package")
+	name = flag.String("name", "", "use this name for the variable instead of one generated based on the input")
+	out  = flag.String("out", "", "use this filename for output instead of inputfile.go")
+	pkg  = flag.String("pkg", "", "use this package name instead of the parent directory of the input")
 )
 
 // Exit error codes
@@ -24,7 +27,7 @@ const (
 )
 
 func printUsage() {
-	fmt.Printf("usage: %s [-in=<path>] [-out=<path>] [-pkg=<name>] <varname>\n", os.Args[0])
+	fmt.Printf("usage: %s [-name=<name>] [-out=<path>] [-pkg=<name>] <inputfile>\n", os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -34,14 +37,7 @@ func printUsageAndExit() {
 }
 
 func readInput() []byte {
-	var data []byte
-	var err error
-
-	if *in != "" {
-		data, err = ioutil.ReadFile(*in)
-	} else {
-		data, err = ioutil.ReadAll(os.Stdin)
-	}
+	data, err := ioutil.ReadFile(flag.Arg(0))
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read input: %s\n", err)
@@ -58,10 +54,23 @@ func checkOutputFailure(err error) {
 }
 
 func writeData(data []byte, out io.Writer) {
-	varname := flag.Arg(0)
+	var varname string
+
+	if *name != "" {
+		varname = *name
+	} else {
+		pieces := strings.FieldsFunc(filepath.Base(flag.Arg(0)), func(r rune) bool {
+			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+		})
+
+		for _, piece := range pieces {
+			p := []rune(piece)
+			varname += string(unicode.ToUpper(p[0])) + string(p[1:])
+		}
+	}
 
 	// write header
-	_, err := fmt.Fprintf(out, "var %s = []byte{\n\t", varname)
+	_, err := fmt.Fprintf(out, "var %s = [...]byte{\n\t", varname)
 	checkOutputFailure(err)
 
 	lastbytei := len(data) - 1
@@ -95,30 +104,30 @@ func writeData(data []byte, out io.Writer) {
 }
 
 func writeOutput(data []byte) {
-	var output *bufio.Writer
-
-	// prepare "output"
-	if *out != "" {
-		file, err := os.Create(*out)
-		checkOutputFailure(err)
-		defer file.Close()
-
-		output = bufio.NewWriter(file)
-	} else {
-		output = bufio.NewWriter(os.Stdout)
+	// prepare output file
+	if *out == "" {
+		*out = flag.Arg(0) + ".go"
 	}
+	file, err := os.Create(*out)
+	checkOutputFailure(err)
+	defer file.Close()
+
+	output := bufio.NewWriter(file)
 
 	// write package clause if any
-	if *pkg != "" {
-		_, err := fmt.Fprintf(output, "package %s\n\n", *pkg)
+	if *pkg == "" {
+		path, err := filepath.Abs(*out)
 		checkOutputFailure(err)
+		*pkg = filepath.Base(filepath.Dir(path))
 	}
+	_, err = fmt.Fprintf(output, "package %s\n\n", *pkg)
+	checkOutputFailure(err)
 
 	// write data
 	writeData(data, output)
 
 	// flush
-	err := output.Flush()
+	err = output.Flush()
 	checkOutputFailure(err)
 }
 
