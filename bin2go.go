@@ -27,7 +27,7 @@ const (
 )
 
 func printUsage() {
-	fmt.Printf("usage: %s [-name=<name>] [-out=<path>] [-pkg=<name>] <inputfile>\n", os.Args[0])
+	fmt.Printf("usage: %s [-name=<name>] [-out=<path>] [-pkg=<name>] <inputfile>\n\t%s [-pkg=<name>] <inputfile>...", os.Args[0], os.Args[0])
 	flag.PrintDefaults()
 }
 
@@ -36,8 +36,8 @@ func printUsageAndExit() {
 	os.Exit(WRONG_ARGS)
 }
 
-func readInput() []byte {
-	data, err := ioutil.ReadFile(flag.Arg(0))
+func readInput(filename string) []byte {
+	data, err := ioutil.ReadFile(filename)
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to read input: %s\n", err)
@@ -53,13 +53,13 @@ func checkOutputFailure(err error) {
 	}
 }
 
-func writeData(data []byte, out io.Writer) {
+func writeData(filename string, data []byte, out io.Writer) {
 	var varname string
 
 	if *name != "" {
 		varname = *name
 	} else {
-		pieces := strings.FieldsFunc(filepath.Base(flag.Arg(0)), func(r rune) bool {
+		pieces := strings.FieldsFunc(filepath.Base(filename), func(r rune) bool {
 			return !unicode.IsLetter(r) && !unicode.IsNumber(r)
 		})
 
@@ -103,10 +103,10 @@ func writeData(data []byte, out io.Writer) {
 	checkOutputFailure(err)
 }
 
-func writeOutput(data []byte) {
+func writeOutput(filename string, data []byte) {
 	// prepare output file
 	if *out == "" {
-		*out = flag.Arg(0) + ".go"
+		*out = filename + ".go"
 	}
 	file, err := os.Create(*out)
 	checkOutputFailure(err)
@@ -124,7 +124,7 @@ func writeOutput(data []byte) {
 	checkOutputFailure(err)
 
 	// write data
-	writeData(data, output)
+	writeData(filename, data, output)
 
 	// flush
 	err = output.Flush()
@@ -135,10 +135,12 @@ func main() {
 	flag.Usage = printUsage
 	flag.Parse()
 
-	if flag.NArg() != 1 {
+	if flag.NArg() == 0 || (flag.NArg() > 1 && (*out != "" || *name != "")) {
 		printUsageAndExit()
 	}
 
-	data := readInput()
-	writeOutput(data)
+	for _, filename := range flag.Args() {
+		data := readInput(filename)
+		writeOutput(filename, data)
+	}
 }
