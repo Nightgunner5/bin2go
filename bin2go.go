@@ -104,13 +104,19 @@ func writeData(filename string, data []byte, out io.Writer) {
 }
 
 func writeOutput(filename string, data []byte) {
+	var file *os.File
+	var err error
+
 	// prepare output file
 	if *out == "" {
-		*out = filename + ".go"
+		file, err = os.Create(filename + ".go")
+		checkOutputFailure(err)
+		defer file.Close()
+	} else {
+		file, err = os.Create(*out)
+		checkOutputFailure(err)
+		defer file.Close()
 	}
-	file, err := os.Create(*out)
-	checkOutputFailure(err)
-	defer file.Close()
 
 	output := bufio.NewWriter(file)
 
@@ -118,10 +124,12 @@ func writeOutput(filename string, data []byte) {
 	if *pkg == "" {
 		path, err := filepath.Abs(*out)
 		checkOutputFailure(err)
-		*pkg = filepath.Base(filepath.Dir(path))
+		_, err = fmt.Fprintf(output, "package %s\n\n", filepath.Base(filepath.Dir(path)))
+		checkOutputFailure(err)
+	} else {
+		_, err = fmt.Fprintf(output, "package %s\n\n", *pkg)
+		checkOutputFailure(err)
 	}
-	_, err = fmt.Fprintf(output, "package %s\n\n", *pkg)
-	checkOutputFailure(err)
 
 	// write data
 	writeData(filename, data, output)
