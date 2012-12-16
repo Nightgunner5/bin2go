@@ -70,7 +70,7 @@ func writeData(filename string, data []byte, out io.Writer) {
 	}
 
 	// write header
-	_, err := fmt.Fprintf(out, "var %s = [...]byte{\n\t", varname)
+	_, err := fmt.Fprintf(out, "var %s = []byte{\n\t", varname)
 	checkOutputFailure(err)
 
 	lastbytei := len(data) - 1
